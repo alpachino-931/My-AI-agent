@@ -1,0 +1,433 @@
+ФИО: Лучаев Ефим Романович
+Группа: 1ИИ-1-11
+Тема помощника: Поиск и исправление ошибок в коде
+Дата: 18.11.2026
+
+ПАПКА ДНЯ 19
+19 Эмбеддинги/
+├── chunks/                          — 13 чанков Дня 18
+├── chunks_summary.csv               — сводка source / chunk_id / length
+├── embeddings.py                    — загрузка модели, similarity, загрузка чанков
+├── final_day19.py                   — итоговая программа (задание 32)
+├── tasks_01_07_vectors.py
+├── tasks_08_13_embeddings.py
+├── tasks_14_18_question_chunks.py
+├── tasks_19_21_metadata.py
+├── tasks_22_25_corpus.py
+├── tasks_26_29_fix_errors.py
+├── tasks_30_31_projects.py
+├── predict_results.py
+├── star1_top3.py
+├── star2_threshold.py
+├── star3_save_embeddings.py
+├── embeddings.json                  — embeddings всех чанков (звёздочка 3)
+├── console_day19.txt                — вывод всех запусков
+└── report_day19.txt
+
+0. ОСОБЕННОСТЬ СРЕДЫ
+На учебном ПК не установлена библиотека sentence-transformers
+(и torch), поэтому по разделу 11 методички используется резервный
+вариант — учебный эмбеддер на хешах слов и символьных n-грамм.
+Он даёт разреженный вектор из 2048 чисел, косинусное сходство считается
+той же формулой. Это не нейросетевая модель: близость получается
+лексической, а не глубоко семантической. Весь алгоритм Дня 19 при этом
+отработан полностью: encode → similarity → лучший чанк → метаданные.
+
+В embeddings.py оставлен и основной путь:
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+
+Функция load_embedder() сначала пытается загрузить эту модель, а при
+ImportError или ошибке загрузки автоматически переходит на HashEmbedder.
+Если установить sentence-transformers и скачать модель, все скрипты
+начнут использовать её без изменения кода.
+
+1. ПРИМЕР EMBEDDING ОДНОГО ТЕКСТА (задание 8)
+Текст: Python — язык программирования
+Тип результата: ndarray
+len(embedding): 2048
+
+Первые 10 чисел:
+[0. 0. 0. 0. 0. 0. 0. 0. 0.2993 0.]
+
+Ненулевых значений: 51 из 2048
+Первый ненулевой индекс: 8
+Первые 10 ненулевых чисел:
+[0.2993 -0.1197 0.1197 0.1197 0.1197 0.1197 0.1197 -0.2993 -0.1197 -0.1197]
+
+Вектор разреженный: каждое слово и каждая символьная n-грамма дают
+несколько ненулевых координат. У нейросетевой модели вектор был бы
+плотным и имел размерность 384.
+
+2. РАЗМЕРНОСТЬ EMBEDDING (задание 9)
+Размерность — количество чисел в одном векторе.
+len(embedding) = 2048.
+Все векторы одного эмбеддера имеют одинаковую размерность, поэтому
+их можно складывать в матрицу (13, 2048) и сравнивать.
+
+3. СРАВНЕНИЕ ПОХОЖИХ И НЕПОХОЖИХ ТЕКСТОВ (задания 11–13)
+texts = [
+    "Как создать список в Python?",
+    "Как работают списки Python?",
+    "Какая сегодня погода?",
+]
+
+Матрица косинусного сходства:
+[1.0, 0.474, 0.048]
+[0.474, 1.0, 0.051]
+[0.048, 0.051, 1.0]
+
+Похожие тексты 0 и 1: 0.474
+Разные тексты 0 и 2: 0.048
+Более высокий score у пары 0–1: True
+
+На диагонали стоит 1.0: каждый текст сравнивается сам с собой.
+Похожие по смыслу предложения получили score в 10 раз выше, чем
+постороннее. Именно на этом основан семантический поиск.
+
+4. ВОПРОС И ЛУЧШИЙ ЧАНК (задание 18)
+chunks = [
+    "Списки Python создаются с помощью квадратных скобок.",
+    "Git commit сохраняет изменения в истории.",
+    "DataFrame — основная таблица Pandas.",
+]
+query = "Как создать список?"
+
+Scores:
+Чанк 0: 0.1597
+Чанк 1: 0.0
+Чанк 2: 0.0
+
+Лучший индекс: 0
+Лучший чанк: Списки Python создаются с помощью квадратных скобок.
+Сходство: 0.1597
+Ожидался чанк про списки: True
+
+Код поиска:
+scores = embedder.similarity(query_embedding, chunk_embeddings)[0].tolist()
+best_score = max(scores)
+best_index = scores.index(best_score)
+best_chunk = chunks[best_index]
+print("Источник:", best_chunk["source"])
+print("Чанк:", best_chunk["chunk_id"])
+print("Текст:", best_chunk["text"])
+print("Сходство:", round(best_score, 4))
+
+Индекс максимального score совпадает с индексом чанка в списке.
+
+5. МЕТАДАННЫЕ ЧАНКА (задание 21)
+chunks[0] = {
+    "source": "python.txt",
+    "chunk_id": 0,
+    "text": "Списки Python создаются с помощью квадратных скобок.",
+    "embedding": [0.2122, 0.0849, 0.0849, -0.0849, ...],
+}
+Поля первого чанка: ['source', 'chunk_id', 'text', 'embedding']
+Длина embedding: 2048
+Ненулевых значений: 85 из 2048
+
+Теперь один объект хранит всё, что нужно для поиска и для ссылки
+на источник. В JSON-файл (звёздочка 3) сохраняются те же поля.
+
+6. ПОИСК ПО КОРПУСУ ДНЯ 18 (задание 32)
+Загружено 13 чанков из 7 документов — больше минимума в 10 чанков.
+Матрица embeddings: (13, 2048), считается один раз.
+Модель: hash-embedder (2048).
+
+Результаты пяти вопросов:
+
+1) Вопрос: Почему возникает NameError?
+   source: python_errors.txt
+   chunk_id: 0
+   score: 0.4066
+   text:
+   Ошибка NameError возникает при обращении к неизвестному имени.
+   TypeError появляется при неверном типе данных.
+   ValueError возникает, когда значение не подходит по смыслу.
+   ...
+
+2) Вопрос: Как объявить функцию через def?
+   source: python_functions.txt
+   chunk_id: 0
+   score: 0.2737
+   text:
+   Функция объявляется словом def.
+   Имя функции описывает действие, которое она выполняет.
+   ...
+
+3) Вопрос: Как открыть файл с помощью open()?
+   source: python_files.txt
+   chunk_id: 0
+   score: 0.3259
+   text:
+   Работа с файлами начинается с функции open().
+   Файл можно открыть для чтения или записи.
+   ...
+
+4) Вопрос: Что делает list.append()?
+   source: python_lists.txt
+   chunk_id: 0
+   score: 0.148
+   text:
+   Список в Python хранит несколько значений по порядку.
+   ...
+   Метод append() добавляет элемент в конец списка.
+   ...
+
+5) Вопрос: Как создать список в Python?
+   source: python_lists.txt
+   chunk_id: 0
+   score: 0.286
+   text:
+   Список в Python хранит несколько значений по порядку.
+   Элементы списка записываются в квадратных скобках.
+   ...
+
+Все пять вопросов нашли чанк из нужного документа. Четвёртый вопрос
+получил более низкий score: в вопросе есть Latin-слово list.append,
+а чанк написан по-русски; лексический резервный эмбеддер видит только
+совпадение «список / list».
+
+7. КОД ЗАДАНИЙ
+
+Задание 7. Вектор сам с собой:
+vector_a = [1.0, 0.0, 0.0]
+print(cosine_similarity(vector_a, vector_a))
+# 1.0
+
+Задание 10. Первые числа embedding:
+embedding = embedder.encode("Python — язык программирования")
+print(embedding[:10])
+nonzero = np.nonzero(embedding)[0]
+print("Ненулевых значений:", len(nonzero), "из", len(embedding))
+print("Первые 10 ненулевых:", embedding[nonzero[:10]])
+
+Задание 13. Сравнение пар:
+close_score = similarities[0][1]
+far_score = similarities[0][2]
+print(close_score, far_score, close_score > far_score)
+# 0.474 0.048 True
+
+Задание 18. Лучший результат:
+scores_list = scores[0].tolist()
+best_score = max(scores_list)
+best_index = scores_list.index(best_score)
+print(best_index, chunks[best_index], round(best_score, 4))
+
+Задание 21. Embedding в словаре:
+for index in range(len(chunks)):
+    chunks[index]["embedding"] = chunk_embeddings[index].tolist()
+
+Задание 25. Проверка источника:
+best = search(embedder, chunks, chunk_embeddings, question)[0]
+print("source:", best["source"])
+print("chunk_id:", best["chunk_id"])
+print("score:", round(best["score"], 4))
+print("text:", best["text"][:120])
+
+Задание 29. Ошибка метаданных:
+Было:  print(chunks["source"])
+Стало: print(chunks[0]["source"])
+chunks — список, поэтому сначала берём элемент по номеру, затем поле
+по имени. Результат: python.txt.
+
+Задание 30. Поиск по трём темам:
+chunks = [
+    {"source": "python.txt", "chunk_id": 0, "text": "Списки в Python создаются через квадратные скобки."},
+    {"source": "python.txt", "chunk_id": 1, "text": "Функция print() выводит текст на экран."},
+    {"source": "git.txt", "chunk_id": 0, "text": "git commit сохраняет изменения в истории."},
+    {"source": "git.txt", "chunk_id": 1, "text": "git branch создаёт отдельную ветку."},
+    {"source": "pandas.txt", "chunk_id": 0, "text": "DataFrame хранит табличные данные."},
+    {"source": "pandas.txt", "chunk_id": 1, "text": "Pandas читает CSV через read_csv()."},
+]
+chunk_embeddings = embedder.encode([chunk["text"] for chunk in chunks])
+best = search(embedder, chunks, chunk_embeddings, question)[0]
+
+Результаты:
+Как создать список?             → python.txt#0, 0.1567
+Как сохранить изменения в Git?  → git.txt#0, 0.5938
+Как прочитать CSV?              → pandas.txt#1, 0.3628
+
+Задание 31. Поиск по корпусу:
+corpus = load_chunks()
+corpus_embeddings = embedder.encode([chunk["text"] for chunk in corpus])
+for question in questions:
+    best = search(embedder, corpus, corpus_embeddings, question)[0]
+    print(best["source"], best["chunk_id"], round(best["score"], 4))
+
+8. ИТОГОВАЯ ПРОГРАММА final_day19.py
+Что делает:
+1) загружает 13 чанков из chunks/ вместе с source и chunk_id;
+2) загружает один эмбеддер (SentenceTransformer или резервный);
+3) один раз считает embeddings всех чанков;
+4) получает вопросы через input(); если терминала нет — берёт готовые;
+5) считает similarity вопроса со всеми чанками;
+6) находит max(score) и его индекс;
+7) выводит source, chunk_id, score и полный текст лучшего чанка;
+8) повторяет поиск для пяти вопросов.
+
+Полный код:
+
+import os
+from pathlib import Path
+
+from embeddings import ask_questions, load_chunks, load_embedder, search
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+DEFAULT_QUESTIONS = [
+    "Почему возникает NameError?",
+    "Как объявить функцию через def?",
+    "Как открыть файл с помощью open()?",
+    "Что делает list.append()?",
+    "Как создать список в Python?",
+]
+
+
+def main() -> None:
+    embedder = load_embedder()
+    chunks = load_chunks()
+
+    documents = {chunk["source"] for chunk in chunks}
+    print("Документов:", len(documents))
+    print("Чанков:", len(chunks))
+    if len(chunks) < 10:
+        print("Внимание: по методичке нужно минимум 10 чанков.")
+
+    print("Модель:", embedder.name)
+    print("Размерность embedding:", embedder.dimension)
+    if embedder.is_fallback:
+        print("Примечание: Sentence Transformers не установлена,")
+        print("поэтому используется резервный учебный эмбеддер.")
+
+    texts = []
+    for chunk in chunks:
+        texts.append(chunk["text"])
+
+    chunk_embeddings = embedder.encode(texts)
+    print("Форма матрицы embeddings:", chunk_embeddings.shape)
+
+    questions = ask_questions(DEFAULT_QUESTIONS)
+    for question in questions:
+        best = search(embedder, chunks, chunk_embeddings, question)[0]
+
+        print("\n" + "=" * 60)
+        print("Вопрос:", question)
+        print("source:", best["source"])
+        print("chunk_id:", best["chunk_id"])
+        print("score:", round(best["score"], 4))
+        print("text:")
+        print(best["text"])
+
+
+if __name__ == "__main__":
+    main()
+
+Проверка:
+Документов: 7
+Чанков: 13
+Форма матрицы embeddings: (13, 2048)
+Интерактивный ввод недоступен: используются готовые вопросы.
+Все пять вопросов получили ответ с source, chunk_id и score.
+
+9. ЗВЁЗДОЧКА 1. TOP-3
+Функция search(..., top_k=3) сортирует результаты по score по убыванию.
+Для вопроса «Почему возникает NameError?»:
+1. score=0.4066  python_errors.txt#0
+2. score=0.1178  python_files.txt#1
+3. score=0.0832  python_files.txt#0
+
+Для вопроса «Как объявить функцию через def?»:
+1. score=0.2737  python_functions.txt#0
+2. score=0.2244  python_functions.txt#1
+3. score=0.1157  python_strings.txt#1
+
+Для вопроса «Как создать список в Python?»:
+1. score=0.286   python_lists.txt#0
+2. score=0.2363  python_lists.txt#1
+3. score=0.1937  python_files.txt#1
+
+Top-3 полезен, потому что первый чанк не всегда содержит полный ответ:
+рядом могут оказаться другие подходящие фрагменты.
+
+10. ЗВЁЗДОЧКА 2. МИНИМАЛЬНЫЙ ПОРОГ
+Выбран порог 0.12.
+Вопрос «Почему возникает NameError?» → 0.4066, фрагмент найден.
+Вопрос «Как открыть файл?»          → 0.3105, фрагмент найден.
+Вопрос «Какая завтра погода?»       → 0.0698, выведено
+«Подходящий фрагмент не найден».
+
+Порог защищает от выдачи случайного чанка с маленьким score. Значение
+подбирается по данным: слишком высокий порог отбросит полезные ответы,
+слишком низкий — пропустит мусор.
+
+11. ЗВЁЗДОЧКА 3. СОХРАНЕНИЕ EMBEDDINGS
+Файл embeddings.json: 13 объектов, у каждого source, chunk_id, text
+и embedding из 2048 чисел (округление до 6 знаков).
+Размер файла: 154 482 байта.
+Прочитано записей: 13
+Все поля на месте: True
+Размерности совпадают: True
+
+Сохранение позволяет не пересчитывать векторы при каждом запуске:
+если корпус не изменился, файл можно загрузить и сразу искать.
+
+12. ПРЕДСКАЗАНИЕ РЕЗУЛЬТАТА (уровень 9)
+1) len([0.1, 0.2, 0.3]) → 3.
+2) scores = [0.2, 0.8, 0.4]; max → 0.8; index → 1.
+3) chunks[1]["source"] → "b.txt".
+
+13. ОТВЕТЫ НА КОНТРОЛЬНЫЕ ВОПРОСЫ
+1. Embedding — числовое представление текста в виде вектора.
+2. Вектор — список чисел; сегодня это обычный список или массив.
+3. Тексты превращают в числа, чтобы их можно было сравнивать и искать
+   программно, а не только читать глазами.
+4. В RAG эмбеддинги нужны, чтобы закодировать чанки и вопрос, сравнить
+   их и выбрать фрагменты, которые потом передаются модели.
+5. Similarity — числовая оценка похожести двух векторов.
+6. Cosine similarity — косинус угла между векторами; чем ближе векторы
+   по направлению, тем выше значение.
+7. Похожие по смыслу тексты модель располагает рядом в векторном
+   пространстве, поэтому косинус между ними больше.
+8. model.encode() преобразует текст или список текстов в вектор/матрицу.
+9. Размерность — количество чисел в одном embedding.
+10. Одна модель использует одно векторное пространство и одну
+    размерность, поэтому все её векторы можно сравнивать.
+11. Передать список текстов: model.encode(texts); получится матрица,
+    где строка — вектор одного текста.
+12. model.similarity() считает матрицу косинусных сходств между двумя
+    наборами векторов.
+13. Вектор совпадает сам с собой по направлению, косинус равен 1.
+14. Получить embedding вопроса и вызвать similarity(query_embedding,
+    chunk_embeddings) — получится score для каждого чанка.
+15. max() находит наибольшее значение score.
+16. scores.index(max_score) или numpy.argmax(scores).
+17. source нужен, чтобы указать документ, из которого взят фрагмент,
+    и проверить ответ по первоисточнику.
+18. chunk_id нужен, чтобы отличить фрагменты одного документа и найти
+    нужный файл чанка.
+19. Векторы чанков считаются один раз, потому что это дорого, а корпус
+    между вопросами не меняется; готовые embeddings можно сохранить.
+20. Разные модели дают разные размерности и разные пространства,
+    поэтому их векторы несопоставимы.
+21. Semantic search — поиск по смысловой близости, а не по точному
+    совпадению слов.
+22. Embedding-поиск возвращает самый близкий из имеющихся чанков, но
+    если нужной информации в корпусе нет, лучший score может быть
+    нерелевантным.
+23. Top-k — несколько лучших результатов, которые передаются дальше.
+24. Следующий этап — векторное хранилище (FAISS, Chroma) и построение
+    полной RAG-цепочки с передачей найденных чанков в LLM.
+
+14. САМОПРОВЕРКА
+☑ Я понимаю, что такое embedding.
+☑ Я понимаю, что такое вектор.
+☑ Я понимаю смысл cosine similarity.
+☑ Я умею получить embedding текста.
+☑ Я могу получить embeddings нескольких текстов.
+☑ Я умею сравнить вопрос с чанками.
+☑ Я могу найти максимальный score.
+☑ Я понимаю связь индекса score и чанка.
+☑ Я умею сохранять source и chunk_id.
+☑ Я понимаю, почему нельзя смешивать разные embedding-модели.
+☑ Я понимаю идею semantic search.
