@@ -1,0 +1,14 @@
+source,chunk_id,length
+python_basics.txt,0,300
+python_basics.txt,1,79
+python_errors.txt,0,300
+python_errors.txt,1,124
+python_files.txt,0,300
+python_files.txt,1,55
+python_functions.txt,0,300
+python_functions.txt,1,69
+python_lists.txt,0,300
+python_lists.txt,1,67
+python_normalization_demo.txt,0,156
+python_strings.txt,0,291
+python_strings.txt,1,41

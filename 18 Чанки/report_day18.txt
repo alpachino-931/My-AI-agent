@@ -1,0 +1,494 @@
+ФИО: Лучаев Ефим Романович
+Группа: 1ИИ-1-11
+Тема помощника: Поиск и исправление ошибок в коде
+Дата: 18.11.2026
+
+ПАПКА ДНЯ 18
+18 Чанки/
+├── normalized/                      — нормализованный корпус Дня 17 (7 файлов)
+├── chunks/                          — 13 TXT-файлов с чанками
+├── chunking.py                      — split_into_chunks(), split_with_overlap()
+├── chunk_corpus.py                  — полный пример из раздела 43 методички
+├── final_day18.py                   — итоговая программа (задание 32)
+├── tasks_01_08_simple_overlap.py
+├── tasks_09_14_cleaning_metadata.py
+├── tasks_15_18_one_document.py
+├── tasks_19_25_corpus_saving.py
+├── tasks_26_29_fix_errors.py
+├── tasks_30_31_projects.py
+├── predict_results.py
+├── star1_two_parameter_sets.py
+├── star2_document_index.py
+├── star3_jsonl.py
+├── chunks_summary.csv               — сводка source / chunk_id / length
+├── chunks_with_index.csv            — сводка звёздочки 2
+├── chunks.jsonl                     — все чанки в JSONL (звёздочка 3)
+├── console_day18.txt                — вывод всех запусков
+└── report_day18.txt
+
+Параметры итогового чанкинга:
+chunk_size = 300 символов, overlap = 50, step = 250,
+minimum_length = 30 символов.
+
+1. ПРИМЕР ПРОСТОГО РАЗБИЕНИЯ СТРОКИ
+text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"
+print(split_into_chunks(text, 10))
+['ABCDEFGHIJ', 'KLMNOPQRST', 'UVWXYZ0123']
+
+С chunk_size = 7:
+['ABCDEFG', 'HIJKLMN', 'OPQRSTU', 'VWXYZ01', '23']
+
+Последний чанк получается короче остальных, потому что длина строки (30)
+не делится на 7 нацело: 30 = 4 * 7 + 2, последний фрагмент — «23», длина 2.
+Это нормально для простого разбиения, но для RAG такой «хвост» обычно
+отбрасывают по minimum_length.
+
+Python — я
+зык програ
+ммирования
+.
+Так выглядит разбиение фразы «Python — язык программирования.» по 10 символов:
+слова разрезаются посередине. Именно поэтому для RAG нужен overlap
+и проверка длины.
+
+2. ПРИМЕР ЧАНКИНГА С OVERLAP
+Для chunk_size = 100 и overlap = 20:
+step = chunk_size - overlap = 100 - 20 = 80.
+
+Текст "ABCDEFGHIJKLMNOPQRSTUVWXYZ", chunk_size = 20, overlap = 5:
+Без overlap: ['ABCDEFGHIJKLMNOPQRST', 'UVWXYZ']
+С overlap:   ['ABCDEFGHIJKLMNOPQRST', 'PQRSTUVWXYZ']
+
+Во втором варианте чанк 2 начинается с «PQRST» — это последние 5 символов
+первого чанка. Перекрытие сохраняет контекст на границе фрагментов.
+Обратите внимание: в заданиях 6–7 передан minimum_length=0, иначе короткие
+учебные чанки были бы отброшены порогом 30 символов.
+
+3. КОД split_with_overlap()
+def split_with_overlap(
+    text: str,
+    chunk_size: int,
+    overlap: int,
+    minimum_length: int = 30,
+) -> list[str]:
+    """Разбиение с перекрытием, обрезкой краёв и отбрасыванием коротких чанков."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size должен быть больше 0")
+    if overlap < 0:
+        raise ValueError("overlap не может быть отрицательным")
+    if overlap >= chunk_size:
+        raise ValueError("overlap должен быть меньше chunk_size")
+
+    chunks = []
+    step = chunk_size - overlap
+    for start in range(0, len(text), step):
+        chunk = text[start:start + chunk_size].strip()
+        if len(chunk) >= minimum_length:
+            chunks.append(chunk)
+    return chunks
+
+Как работает:
+- проверяются три недопустимых значения параметров;
+- step = chunk_size - overlap, поэтому следующий чанк начинается раньше
+  конца предыдущего;
+- срез text[start:start + chunk_size] берёт не больше chunk_size символов;
+- strip() убирает пробелы и переводы строк по краям;
+- чанк короче minimum_length не добавляется;
+- range() идёт от 0 до len(text) с шагом step.
+
+4. ПРОВЕРКА ПАРАМЕТРОВ (задание 8)
+try:
+    split_with_overlap(text, 20, 20)
+except ValueError as error:
+    print("Ошибка перехвачена:", error)
+
+Вывод:
+Ошибка перехвачена: overlap должен быть меньше chunk_size
+
+Если overlap равен chunk_size, step = 0, и range(0, len(text), 0) падает
+с ошибкой ValueError: range() arg 3 must not be zero. Поэтому проверка
+делается до цикла.
+
+5. СЛОВАРЬ С МЕТАДАННЫМИ (задания 12–14)
+data = {
+    "source": file_path.name,
+    "chunk_id": chunk_id,
+    "length": len(chunk),
+    "text": chunk,
+}
+
+Пример из tasks_09_14_cleaning_metadata.py:
+{'source': 'python_functions.txt', 'chunk_id': 0, 'length': 25, 'text': 'Python — язык программиро'}
+{'source': 'python_functions.txt', 'chunk_id': 1, 'length': 25, 'text': 'ммирования. Функции объяв'}
+{'source': 'python_functions.txt', 'chunk_id': 2, 'length': 25, 'text': 'объявляются через def. Сп'}
+{'source': 'python_functions.txt', 'chunk_id': 3, 'length': 25, 'text': 'f. Списки хранят элементы'}
+{'source': 'python_functions.txt', 'chunk_id': 4, 'length': 13, 'text': 'менты. Конец.'}
+
+source — имя исходного файла, chunk_id — номер внутри документа,
+length — длина текста чанка, text — сам фрагмент. Номер выдаёт enumerate().
+
+6. ТРИ СОСЕДНИХ ЧАНКА (задание 18, вместо скриншота)
+Файл python_errors.txt, 374 символа, параметры 200/40.
+
+Чанк 0 (длина 200):
+Ошибка NameError возникает при обращении к неизвестному имени.
+TypeError появляется при неверном типе данных.
+ValueError возникает, когда значение не подходит по смыслу.
+IndexError означает выход за г
+
+Чанк 1 (длина 200):
+о смыслу.
+IndexError означает выход за границы списка.
+KeyError появляется при отсутствии ключа в словаре.
+Traceback показывает место, где произошла ошибка.
+Ошибки читают снизу вверх: последняя строка
+
+Чанк 2 (длина 54):
+бки читают снизу вверх: последняя строка самая важная.
+
+Видно перекрытие: конец чанка 0 («...по смыслу. IndexError означает выход
+за г») повторяется в начале чанка 1 («о смыслу. IndexError...»). Слова
+не разрезаются по пробелам идеально, но смысл на границе не теряется.
+
+7. ПАПКА chunks (вместо скриншота)
+python_basics_chunk_0.txt              300
+python_basics_chunk_1.txt               79
+python_errors_chunk_0.txt              300
+python_errors_chunk_1.txt              124
+python_files_chunk_0.txt               300
+python_files_chunk_1.txt                55
+python_functions_chunk_0.txt           300
+python_functions_chunk_1.txt            69
+python_lists_chunk_0.txt               300
+python_lists_chunk_1.txt                67
+python_normalization_demo_chunk_0.txt  156
+python_strings_chunk_0.txt             291
+python_strings_chunk_1.txt              41
+
+Всего 13 файлов — ровно столько же строк в CSV. Имена построены по шаблону
+имя_chunk_номер.txt, расширение исходного файла заменено через Path.stem.
+
+8. ФАЙЛ chunks_summary.csv
+source,chunk_id,length
+python_basics.txt,0,300
+python_basics.txt,1,79
+python_errors.txt,0,300
+python_errors.txt,1,124
+python_files.txt,0,300
+python_files.txt,1,55
+python_functions.txt,0,300
+python_functions.txt,1,69
+python_lists.txt,0,300
+python_lists.txt,1,67
+python_normalization_demo.txt,0,156
+python_strings.txt,0,291
+python_strings.txt,1,41
+
+9. КОД ЗАДАНИЙ
+
+Задание 8. Ошибочный overlap:
+try:
+    split_with_overlap(text, 20, 20)
+except ValueError as error:
+    print("Ошибка перехвачена:", error)
+
+Задание 11. minimum_length = 20:
+long_text = (
+    "Python — язык программирования. Функции объявляются через def. "
+    "Списки хранят элементы. Конец."
+)
+raw_chunks = [
+    long_text[start:start + 40].strip()
+    for start in range(0, len(long_text), 30)
+]
+print("Все фрагменты:", raw_chunks)
+print("После порога 20:", split_with_overlap(long_text, 40, 10, minimum_length=20))
+Все фрагменты: ['Python — язык программирования. Функции', '. Функции объявляются через def. Списки', 'f. Списки хранят элементы. Конец.', 'ец.']
+После порога 20: ['Python — язык программирования. Функции', '. Функции объявляются через def. Списки', 'f. Списки хранят элементы. Конец.']
+Последний фрагмент «ец.» короче 20 символов и поэтому не попал в результат.
+
+Задание 14. Поле length:
+result.append({
+    "source": "python_functions.txt",
+    "chunk_id": chunk_id,
+    "length": len(chunk),
+    "text": chunk,
+})
+
+Задание 18. Проверка трёх соседних чанков:
+for chunk_id, chunk in enumerate(chunks[:3]):
+    print(f"\nЧанк {chunk_id}:")
+    print(chunk)
+
+Задание 22. Средняя длина:
+average = sum(chunk["length"] for chunk in all_chunks) / len(all_chunks) if all_chunks else 0
+print("Средняя длина:", round(average, 1))
+
+Задание 25. CSV-сводка:
+with open("chunks_summary.csv", "w", encoding="utf-8", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["source", "chunk_id", "length"])
+    for chunk in all_chunks:
+        writer.writerow([chunk["source"], chunk["chunk_id"], chunk["length"]])
+
+Задание 29. Ошибка имени файла:
+Было:  filename = file_path.name + "_chunk_" + chunk_id + ".txt"
+Стало: filename = file_path.stem + "_chunk_" + str(chunk_id) + ".txt"
+Нельзя складывать строку и число, а .name сохраняет расширение .txt.
+Результат: python_chunk_1.txt
+
+Задание 30. Один документ, два размера:
+text = Path("normalized/python_errors.txt").read_text(encoding="utf-8")
+small = split_with_overlap(text, 200, 40)
+large = split_with_overlap(text, 400, 80)
+print("200/40 →", len(small), [len(chunk) for chunk in small])
+print("400/80 →", len(large), [len(chunk) for chunk in large])
+Вывод:
+200/40 → чанков: 3 длины: [200, 200, 54]
+400/80 → чанков: 2 длины: [374, 54]
+
+Задание 31. Чанкинг всего корпуса:
+for source_path in sorted(Path("normalized").glob("*.txt")):
+    source_text = source_path.read_text(encoding="utf-8")
+    for chunk_id, chunk in enumerate(split_with_overlap(source_text, 300, 50)):
+        all_chunks.append({
+            "source": source_path.name,
+            "chunk_id": chunk_id,
+            "length": len(chunk),
+            "text": chunk,
+        })
+        filename = f"{source_path.stem}_chunk_{chunk_id}.txt"
+        (chunks_dir / filename).write_text(chunk, encoding="utf-8")
+Затем тот же CSV, что в задании 25. Итог: 13 чанков.
+
+10. ИТОГОВАЯ ПРОГРАММА final_day18.py
+Что делает:
+1) находит все TXT-файлы в normalized/;
+2) читает каждый документ в UTF-8;
+3) делит текст на чанки 300/50;
+4) проверяет корректность параметров внутри split_with_overlap();
+5) удаляет пробелы по краям через strip();
+6) не сохраняет пустые и слишком короткие чанки;
+7) хранит source, chunk_id и length;
+8) создаёт папку chunks/ и сохраняет каждый чанк в TXT;
+9) создаёт chunks_summary.csv;
+10) выводит число документов, общее число чанков и среднюю длину;
+11) проверяет, что нет чанков длиннее 300 и короче 30 символов.
+
+Полный код:
+
+import csv
+import os
+from pathlib import Path
+
+from chunking import split_with_overlap
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+SOURCE_DIR = Path("normalized")
+CHUNKS_DIR = Path("chunks")
+CSV_FILE = Path("chunks_summary.csv")
+CHUNK_SIZE = 300
+OVERLAP = 50
+MINIMUM_LENGTH = 30
+
+CHUNKS_DIR.mkdir(exist_ok=True)
+for old_file in CHUNKS_DIR.glob("*.txt"):
+    old_file.unlink()
+
+files = sorted(SOURCE_DIR.glob("*.txt"))
+if not files:
+    print("В папке normalized нет TXT-файлов.")
+    raise SystemExit(1)
+
+all_chunks = []
+
+for file_path in files:
+    text = file_path.read_text(encoding="utf-8")
+    chunks = split_with_overlap(
+        text,
+        chunk_size=CHUNK_SIZE,
+        overlap=OVERLAP,
+        minimum_length=MINIMUM_LENGTH,
+    )
+
+    for chunk_id, chunk in enumerate(chunks):
+        data = {
+            "source": file_path.name,
+            "chunk_id": chunk_id,
+            "length": len(chunk),
+            "text": chunk,
+        }
+        all_chunks.append(data)
+
+        filename = f"{file_path.stem}_chunk_{chunk_id}.txt"
+        (CHUNKS_DIR / filename).write_text(chunk, encoding="utf-8")
+
+with open(CSV_FILE, "w", encoding="utf-8", newline="") as report:
+    writer = csv.writer(report)
+    writer.writerow(["source", "chunk_id", "length"])
+    for chunk in all_chunks:
+        writer.writerow([chunk["source"], chunk["chunk_id"], chunk["length"]])
+
+total_length = sum(chunk["length"] for chunk in all_chunks)
+average = total_length / len(all_chunks) if all_chunks else 0
+
+print(f"Документов: {len(files)}")
+print(f"Всего чанков: {len(all_chunks)}")
+print(f"Средняя длина чанка: {round(average, 1)}")
+
+empty_chunks = [chunk for chunk in all_chunks if chunk["text"] == ""]
+too_long = [chunk for chunk in all_chunks if chunk["length"] > CHUNK_SIZE]
+too_short = [chunk for chunk in all_chunks if chunk["length"] < MINIMUM_LENGTH]
+
+print(f"Пустых чанков: {len(empty_chunks)}")
+print(f"Чанков длиннее {CHUNK_SIZE}: {len(too_long)}")
+print(f"Чанков короче {MINIMUM_LENGTH}: {len(too_short)}")
+print(f"Метаданные и тексты сохранены в {CHUNKS_DIR.name}/ и {CSV_FILE.name}")
+
+11. СВОДКА ПО КОЛИЧЕСТВУ И СРЕДНЕЙ ДЛИНЕ
+Документов: 7
+Всего чанков: 13
+Средняя длина чанка: 183.2
+Пустых чанков: 0
+Чанков длиннее 300: 0
+Чанков короче 30: 0
+
+Сумма длин всех чанков: 2382 символа.
+Длина исходного корпуса: 2091 символ. Сумма больше исходника, потому что
+перекрытие 50 символов повторяет часть текста на границах чанков.
+
+Проверка качества (задание 40 методички):
+- пустых фрагментов нет;
+- чанков длиннее 300 нет;
+- чанков короче 30 нет;
+- у каждого чанка есть source и chunk_id;
+- в соседних чанках видно перекрытие;
+- имена файлов в chunks/ совпадают с CSV (13 и 13).
+
+12. ЗВЁЗДОЧКА 1. ДВА НАБОРА ПАРАМЕТРОВ
+chunk_size=200, overlap=40
+  чанков: 14
+  средняя длина: 169.4
+  минимальная длина: 54
+  максимальная длина: 200
+chunk_size=400, overlap=80
+  чанков: 8
+  средняя длина: 268.1
+  минимальная длина: 54
+  максимальная длина: 374
+
+Сравнение:
+  200/40 → 14 чанков
+  400/80 → 8 чанков
+  во сколько раз меньше: 1.75
+
+Вывод: при увеличении chunk_size в 2 раза (и overlap тоже в 2 раза)
+количество чанков уменьшилось с 14 до 8, то есть примерно в 1,75 раза.
+Средняя длина выросла со 169,4 до 268,1 символа. Крупные чанки дают
+меньше фрагментов, но в каждом больше лишней информации; мелкие — точнее
+ищутся, но их больше и они сильнее разрезают смысл.
+
+13. ЗВЁЗДОЧКА 2. document_index
+Для каждого файла добавлен номер документа:
+for document_index, file_path in enumerate(files):
+    ...
+    data = {
+        "document_index": document_index,
+        "source": file_path.name,
+        "chunk_id": chunk_id,
+        "length": len(chunk),
+        "text": chunk,
+    }
+
+Результат сохранён в chunks_with_index.csv:
+document_index  source                          chunk_id  length
+0               python_basics.txt               0         300
+0               python_basics.txt               1          79
+1               python_errors.txt               0         300
+1               python_errors.txt               1         124
+2               python_files.txt                0         300
+2               python_files.txt                1          55
+3               python_functions.txt            0         300
+3               python_functions.txt            1          69
+4               python_lists.txt                0         300
+4               python_lists.txt                1          67
+5               python_normalization_demo.txt   0         156
+6               python_strings.txt              0         291
+6               python_strings.txt              1          41
+
+document_index отличается от chunk_id: chunk_id нумерует чанки внутри
+документа и начинается с 0 для каждого файла, document_index нумерует
+сами документы и не повторяется.
+
+14. ЗВЁЗДОЧКА 3. JSONL
+Файл chunks.jsonl: 13 строк, в каждой один JSON-объект.
+{"source": "python_basics.txt", "chunk_id": 0, "length": 300, "text": "Python — язык программирования общего назначения.\nПеременная хранит значение и имеет имя.\n..."}
+{"source": "python_basics.txt", "chunk_id": 1, "length": 79, "text": "or повторяет действия для каждого элемента.\nКомментарий начинается с символа #."}
+
+Проверка обратного чтения:
+Прочитано записей: 13
+Все поля на месте: True
+Поле length совпадает с длиной text: True
+
+JSONL удобен тем, что файл можно читать построчно и не загружать целиком
+в память; каждая строка — самостоятельный объект.
+
+15. КОНТРОЛЬНЫЕ ВОПРОСЫ
+1. Чанк — небольшой фрагмент исходного документа, который получается при
+   разбиении длинного текста.
+2. Документы делят на чанки, чтобы искать небольшой подходящий фрагмент,
+   передавать модели только релевантную часть, уменьшать лишний контекст
+   и точно указывать источник найденной информации.
+3. chunk_size — максимальный размер одного фрагмента; сегодня он считается
+   в символах.
+4. Слишком маленький чанк может потерять смысл: «Python —», «язык»,
+   «программирования» по отдельности ничего не объясняют.
+5. Слишком большой чанк снова содержит много лишней информации и хуже
+   помещается в контекст модели.
+6. Overlap — перекрытие соседних чанков, когда конец предыдущего фрагмента
+   повторяется в начале следующего.
+7. Перекрытие уменьшает риск потерять важную мысль на границе чанков
+   и помогает поиску найти информацию на стыке.
+8. step = chunk_size - overlap. Например, 300 - 50 = 250.
+9. Если overlap >= chunk_size, шаг становится нулевым или отрицательным,
+   и цикл не может нормально двигаться по тексту.
+10. Если step равен 0, range(0, len(text), 0) выбрасывает ValueError:
+    range() arg 3 must not be zero.
+11. Фрагмент строки получают срезом: text[start:start + chunk_size].
+12. range(0, len(text), step) задаёт индексы начала чанков: от 0 до конца
+    текста с шагом step.
+13. strip() удаляет пробельные символы в начале и в конце чанка, чтобы
+    в файлы не попадали лишние пробелы и переводы строк.
+14. Пустые чанки не несут информации, занимают место в CSV и могут
+    испортить поиск и подсчёт средней длины.
+15. minimum_length отбрасывает слишком короткие «хвосты» последнего чанка,
+    в которых нет законченной мысли.
+16. source — имя исходного документа, из которого взят чанк.
+17. chunk_id — номер чанка внутри документа.
+18. enumerate() одновременно даёт номер и сам элемент, поэтому не нужно
+    вручную увеличивать счётчик.
+19. Длина чанка нужна для контроля качества, статистики и сравнения
+    наборов параметров.
+20. Path.stem возвращает имя файла без расширения: Path("python.txt").stem
+    → "python".
+21. Визуальная проверка показывает, что текст читается, слова не разрезаны
+    катастрофически, перекрытие работает и важные строки не потеряны.
+22. Символы выбраны для простоты: токенизация усложнила бы первый учебный
+    алгоритм. В реальных системах размер считают в токенах.
+23. Следующий этап — эмбеддинги: преобразование чанков в числовые векторы
+    и векторный поиск.
+
+16. САМОПРОВЕРКА
+☑ Я понимаю, что такое чанк.
+☑ Я понимаю, зачем RAG разбивает документы.
+☑ Я понимаю параметр chunk_size.
+☑ Я понимаю overlap.
+☑ Я умею вычислять step.
+☑ Я умею разрезать строку срезами.
+☑ Я могу создать функцию чанкинга.
+☑ Я умею проверять параметры.
+☑ Я могу сохранять source и chunk_id.
+☑ Я умею работать с enumerate().
+☑ Я могу чанковать весь корпус.
+☑ Я умею сохранять чанки и сводку.
