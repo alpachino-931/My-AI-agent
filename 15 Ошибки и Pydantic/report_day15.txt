@@ -1,0 +1,307 @@
+ФИО: Лучаев Ефим Романович
+Группа: 1ИИ-1-11
+Тема помощника: Поиск и исправление ошибок в коде
+Дата: 17.11.2026
+
+ПАПКА ДНЯ 15
+15 Ошибки и Pydantic/
+├── api_errors.py              — try / except, коды ошибок API
+├── logging_demo.py            — INFO / WARNING / ERROR и app.log
+├── structured_output.py       — Pydantic, Field, chat_parse
+├── final_day15.py             — итоговый надёжный анализатор
+├── task27_question_analyzer.py
+├── task28_student_extractor.py
+├── task29_request_classifier.py
+├── app.log                    — журнал событий
+├── result.txt                 — структурированный результат
+├── report_day15.txt
+└── certs/
+
+Ключ API хранится только в корневом .env. В код, отчёт и app.log он не попадает.
+
+1. ПРИМЕР try / EXCEPT
+Задания 1–4 (api_errors.py):
+
+def demo_int_conversion():
+    text = input("Введите целое число: ").strip()
+    try:
+        number = int(text)
+        print(f"Получилось число: {number}")
+    except ValueError as error:
+        print("Не удалось преобразовать текст в целое число.")
+        print(f"Техническая информация: {error}")
+
+def demo_api_call():
+    prompt = input("Введите запрос к GigaChat: ").strip()
+    try:
+        with GigaChat(...) as client:
+            response = client.chat.create(prompt)
+        print("Ответ:", response.messages[0].content[0].text)
+    except Exception:
+        print("Не удалось получить ответ")
+
+Фактический запуск:
+- ввод "abc" → «Не удалось преобразовать текст в целое число.
+  Техническая информация: invalid literal for int() with base 10: 'abc'»;
+- запрос «Привет! Что такое API?» → получен обычный текстовый ответ.
+
+2. ПРИМЕР ЛОГИРОВАНИЯ INFO, WARNING И ERROR
+Задания 5–6 (logging_demo.py):
+
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding="utf-8",
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.info("Программа запущена")
+logging.warning("Пример WARNING: подозрительная, но не критическая ситуация")
+logging.error("Пример ERROR: API не ответил")
+
+3. ФРАГМЕНТ app.log (без секретов)
+2026-11-17 22:34:28,335 - INFO - Программа запущена
+2026-11-17 22:34:28,335 - WARNING - Пример WARNING: подозрительная, но не критическая ситуация
+2026-11-17 22:34:28,335 - ERROR - Пример ERROR: API не ответил
+2026-11-17 22:34:28,335 - WARNING - Получен пустой ввод
+2026-11-17 22:34:28,805 - INFO - Пользовательский запрос получен
+2026-11-17 22:34:28,806 - INFO - Запрос отправлен в API
+2026-11-17 22:34:29,162 - INFO - Ответ успешно получен
+2026-11-17 22:34:29,684 - WARNING - Invalid credentials format. ...
+2026-11-17 22:34:29,727 - ERROR - Ошибка API: 400 ... Can't decode 'Authorization' header
+2026-11-17 22:34:30,191 - INFO - Старт программы
+2026-11-17 22:34:30,191 - WARNING - Получен пустой ввод
+2026-11-17 22:34:31,958 - INFO - Структурированный ответ получен
+2026-11-17 22:34:31,959 - INFO - Результат сохранён в result.txt
+
+Проверка секрета: значение GIGACHAT_CREDENTIALS в app.log отсутствует
+(проверено программно: key in log: False).
+
+4. ПРИМЕР PYDANTIC-МОДЕЛИ (задание 15)
+class Book(BaseModel):
+    title: str = Field(description="Название книги")
+    author: str = Field(description="Автор книги")
+    year: int = Field(description="Год издания")
+
+5. ПРИМЕР ОБЪЕКТА PYDANTIC (задание 13)
+book = Book(title="Python для начинающих", author="Иванов И. И.", year=2024)
+print(book.title, book.author, book.year)
+
+Фактический вывод:
+title='Python для начинающих' author='Иванов И. И.' year=2024
+Название: Python для начинающих
+Автор: Иванов И. И.
+Год: 2024
+
+Ошибка типа (задание 14): year="не число" → Pydantic не принял значение:
+«Input should be a valid integer, unable to parse string as an integer».
+
+6. ПРИМЕР chat_parse() (задания 16–18)
+class StudentInfo(BaseModel):
+    name: str = Field(description="Имя студента")
+    group: str = Field(description="Учебная группа")
+    score: int = Field(description="Балл от 0 до 100")
+
+with GigaChat(...) as client:
+    completion, parsed = client.chat_parse(
+        "Извлеки данные из текста: Анна из группы 1ИИ-1 получила 87 баллов.",
+        response_format=StudentInfo,
+        strict=True,
+    )
+print(parsed.name, parsed.group, parsed.score)
+
+Фактический вывод:
+Имя: Анна
+Группа: 1ИИ-1
+Балл: 87
+
+Классификация (задание 17): «Как исправить ZeroDivisionError в Python?»
+→ Категория: Программирование, уверенность: 0% (значение вернула модель).
+
+Анализ темы (задание 18): «рекурсия в Python»
+→ Тема: Рекурсия в Python; Сложность: средняя; Кратко: функция вызывает саму себя,
+пока не достигнет базового случая.
+
+7. КОД КЛЮЧЕВЫХ ЗАДАНИЙ
+
+Задание 8. Ошибка в лог:
+try:
+    with GigaChat(...) as client:
+        response = client.chat.create(prompt)
+except Exception as error:
+    logging.error("Ошибка API: %s", error)
+    print("Не удалось получить ответ")
+
+Задание 11. WARNING при пустом вводе:
+if text == "":
+    print("Сообщение не должно быть пустым. Запрос не отправлен.")
+    logging.warning("Получен пустой ввод")
+    return
+
+Задание 15. Field с описанием — см. модель Book в разделе 4.
+
+Задание 19. strict=True:
+completion, parsed = client.chat_parse(
+    prompt,
+    response_format=CodeErrorAnalysis,
+    strict=True,
+)
+strict=True требует строгого соответствия ответа схеме: все поля обязательны,
+типы проверяются, лишние вольности не принимаются.
+
+Задание 22. Пустой ввод не вызывает API:
+text = input("> ").strip()
+if text == "":
+    logging.warning("Получен пустой ввод")
+    print("Сообщение не должно быть пустым. Запрос не отправлен.")
+    return
+# только после этой проверки создаётся prompt и вызывается chat_parse
+
+Задание 26. Исправленный chat_parse:
+completion, parsed = client.chat_parse(
+    prompt,
+    response_format=Result,   # был str "Result"
+    strict=True,              # была str "True"
+)
+
+Задание 27. task27_question_analyzer.py:
+class QuestionAnalysis(BaseModel):
+    topic: str = Field(description="Учебная тема вопроса")
+    difficulty: str = Field(description="Сложность: низкая, средняя или высокая")
+    short_answer: str = Field(description="Краткий ответ на вопрос")
+...
+completion, parsed = client.chat_parse(
+    f"Проанализируй учебный вопрос: {question}",
+    response_format=QuestionAnalysis, strict=True,
+)
+Фактический ввод: «Как работает рекурсия в Python?»
+Вывод: Тема: Рекурсия в Python; Сложность: средняя; краткий ответ получен.
+
+Задание 28. task28_student_extractor.py:
+class StudentInfo(BaseModel):
+    name: str; group: str; score: int
+...
+completion, parsed = client.chat_parse(
+    f"Извлеки данные о студенте из текста: {text}",
+    response_format=StudentInfo, strict=True,
+)
+Фактический ввод: «Студент Пётр Сидоров из группы 2ИИ-2 получил 91 балл.»
+Вывод: Имя: Пётр; Группа: 2ИИ-2; Балл: 91.
+
+Задание 29. task29_request_classifier.py:
+class RequestClassification(BaseModel):
+    category: str
+    priority: str
+    summary: str
+...
+except Exception as error:
+    logging.error("task29: ошибка API: %s", error)
+    print("Не удалось обработать обращение")
+Фактический ввод: «Программа падает с ошибкой ZeroDivisionError...»
+Вывод: Категория: Технические проблемы; Приоритет: Высокая срочность;
+Кратко: ошибка деления на ноль, требуется исправление.
+
+8. ИТОГОВАЯ ПРОГРАММА final_day15.py
+Модель из шести полей:
+class CodeErrorAnalysis(BaseModel):
+    language: str
+    error_type: str
+    severity: str
+    cause: str
+    fix: str
+    advice: str
+
+Порядок работы:
+1) logging в app.log;
+2) ключ читается из .env, не выводится и не логируется;
+3) input().strip(), пустая строка → WARNING и выход без API;
+4) INFO «Пользовательский текст получен», «Промпт сформирован»;
+5) chat_parse(prompt, response_format=CodeErrorAnalysis, strict=True) внутри try;
+6) INFO «Структурированный ответ получен», поля выводятся через parsed.field;
+7) поля сохраняются в result.txt;
+8) except → короткое сообщение пользователю и logging.error с технической ошибкой;
+9) счётчик успешных запросов (задание со звёздочкой) выводится в конце.
+
+Фактический запуск:
+Язык: Python
+Тип ошибки: ZeroDivisionError
+Критичность: Низкая (при тестировании)/Высокая (в продакшене)
+Причина: функция пытается разделить число на ноль...
+Исправление: добавлена проверка if b == 0: raise ValueError(...)
+Совет: проверять аргументы перед опасными операциями.
+Успешных запросов за запуск: 1
+
+9. app.log
+Файл app.log приложен в папке дня 15.
+
+10. УСПЕШНЫЙ СТРУКТУРИРОВАННЫЙ ОТВЕТ
+Скриншот заменён фактическим консольным выводом и файлом result.txt (см. раздел 8).
+Результат также сохранён в result.txt:
+Язык: Python
+Тип ошибки: ZeroDivisionError
+Критичность: ...
+Причина: ...
+Исправление: ...
+Совет: ...
+
+11. ОБРАБОТАННАЯ ОШИБКА И ПУСТОЙ ВВОД
+Пустой ввод final_day15.py:
+> Сообщение не должно быть пустым. Запрос не отправлен.
+В app.log: WARNING - Получен пустой ввод.
+
+Ошибка API (проверка с неверным ключом):
+Пользователь увидел: «Не удалось получить ответ».
+В app.log: ERROR - Ошибка API: 400 ... Can't decode 'Authorization' header.
+
+12. ЗАДАНИЯ «НАЙДИ ОШИБКИ» (23–26)
+23. try: / except Exception as error: — добавлены двоеточия.
+24. filename="app.log", level=logging.INFO — добавлена запятая.
+25. class Result(BaseModel): category: str; score: int — двоеточие после класса
+    и аннотации типов вместо присваивания.
+26. response_format=Result (класс, не строка), strict=True (bool, не строка).
+
+13. ПРЕДСКАЗАНИЕ РЕЗУЛЬТАТА (уровень 8)
+text = "   "; text = text.strip(); print(text == "") → True.
+logging.info("Старт") при filename="app.log" → строка попадёт в файл app.log.
+result = Result(category="Python", score=5); print(result.score) → 5.
+
+14. ОТВЕТЫ НА КОНТРОЛЬНЫЕ ВОПРОСЫ
+1. try — блок, где выполняется потенциально проблемный код.
+2. except — блок, который выполняется при возникновении исключения.
+3. Exception as error — перехватить любое исключение и сохранить объект в error.
+4. Длинная техническая ошибка пугает пользователя, содержит внутренние детали
+   и не подсказывает действие. Пользователю — короткое сообщение, детали — в лог.
+5. 401 — не удалось авторизоваться: неверный или просроченный токен.
+6. 429 — слишком много запросов, превышен лимит.
+7. 500 — ошибка на стороне сервера, обычно временная.
+8. Логирование — запись событий программы в журнал.
+9. app.log нужен, чтобы видеть этапы работы, время запуска и технические ошибки.
+10. INFO — обычное событие (запрос отправлен, ответ получен).
+11. WARNING — подозрительная, но не критическая ситуация (пустой ввод).
+12. ERROR — произошла ошибка (API не ответил).
+13. Ключ — секрет; лог может попасть в Git, на скриншот или к другому человеку.
+14. strip() удаляет пробелы и переводы строк по краям.
+15. Пустой ввод бесполезен: тратит токены, даёт непонятную ошибку API.
+16. Структурированный ответ — данные по заранее известной схеме (JSON/поля).
+17. Не нужно вытаскивать значения из текста: доступны поля и проверены типы.
+18. Pydantic — библиотека описания и проверки структуры данных.
+19. BaseModel — базовый класс, от которого наследуется модель.
+20. score: int — поле score должно быть целым числом.
+21. Field(description=...) — описание поля для схемы и модели.
+22. chat_parse() отправляет запрос и разбирает ответ в Pydantic-объект.
+23. response_format=Result — ожидаемая схема ответа.
+24. strict=True — требовать строгого соответствия схеме.
+25. В parsed находится проверенный объект модели с полями.
+26. Через точку: parsed.category, parsed.score.
+27. Записать ошибку в лог, показать короткое сообщение, проверить схему и промпт,
+    при необходимости повторить запрос или вернуть запасной результат.
+
+15. САМОПРОВЕРКА
+- Понимаю, зачем нужен try / except и как сохранить ошибку через as error.
+- Различаю коды 400, 401, 403, 413, 422, 429, 500.
+- Умею настроить logging и различаю INFO, WARNING, ERROR.
+- Ключ API не вывожу и не логирую.
+- Проверяю пустой ввод через strip() до вызова API.
+- Умею создавать Pydantic-модель, Field(description=...) и объект вручную.
+- Понимаю chat_parse(), response_format и strict=True.
+- Умею обращаться к parsed.field и сохранять поля в файл.
