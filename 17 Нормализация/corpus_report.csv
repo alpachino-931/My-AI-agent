@@ -1,0 +1,8 @@
+source,before,after,reduction_percent
+python_basics.txt,329,329,0.0
+python_errors.txt,374,374,0.0
+python_files.txt,305,305,0.0
+python_functions.txt,319,319,0.0
+python_lists.txt,317,317,0.0
+python_normalization_demo.txt,303,156,48.5
+python_strings.txt,291,291,0.0
