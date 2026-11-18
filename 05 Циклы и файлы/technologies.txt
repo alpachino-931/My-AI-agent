@@ -1,0 +1,5 @@
+Python
+Git
+SQL
+Docker
+Linux
